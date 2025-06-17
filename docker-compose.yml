@@ -1,0 +1,36 @@
+services:
+  database:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    # volumes:
+    #   - ./docker/mysql:/docker-entrypoint-initdb.d
+    ports:
+      - 3306:3306
+    networks:
+      - app-network
+  api:
+    build: ./docker/php
+    # environment:
+    #   DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@${MYSQL_HOST}/${MYSQL_DATABASE}
+    volumes:
+      - ./src:/var/www/html
+      - ./docker/apache/httpd-vhosts.conf:/etc/apache2/sites-available/000-default.conf
+      - ./docker/php/memory_limit.ini:/usr/local/etc/php/conf.d/memory_limit.ini
+      - ./docker/php/bootstrap.sh:/bootstrap.sh
+    env_file: .env
+    ports:
+      - 8000:80
+    networks:
+      - app-network
+    command: ["sh", "-c", '/bootstrap.sh && exec "$@"']
+    depends_on:
+      - database
+
+networks:
+  app-network:
+    driver: bridge
+    name: app-network
