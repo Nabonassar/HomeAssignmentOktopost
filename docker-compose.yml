@@ -6,16 +6,12 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-    # volumes:
-    #   - ./docker/mysql:/docker-entrypoint-initdb.d
     ports:
       - 3306:3306
     networks:
       - app-network
   api:
     build: ./docker/php
-    # environment:
-    #   DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@${MYSQL_HOST}/${MYSQL_DATABASE}
     volumes:
       - ./src:/var/www/html
       - ./docker/apache/httpd-vhosts.conf:/etc/apache2/sites-available/000-default.conf
