@@ -11,9 +11,9 @@ use Illuminate\Http\Response;
 
 class TaskController extends Controller
 {
-    public function index(Request $request, Task $task): JsonResponse
+    public function index(Request $request, TaskService $taskService, Task $task): JsonResponse
     {
-        return response()->json($task->with('status:id,name')->get());
+        return response()->json($taskService->fetch($request->all(), $task));
     }
 
     public function show(Request $request, ValidationService $validationService, TaskService $taskService, Task $task): JsonResponse
@@ -31,7 +31,7 @@ class TaskController extends Controller
 
     public function edit(Request $request, ValidationService $validationService, TaskService $taskService, Task $task): JsonResponse
     {
-        $parameters = $validationService->validateParameters($request, ['title' => 'required|string|max:255', 'status' => 'required|string',]);
+        $parameters = $validationService->validateParameters($request, ['title' => 'required|string|max:255', 'status' => 'required|string', 'description' => 'required|string']);
         $taskData = $validationService->validateModelEntity($task, $request->id);
         return response()->json($taskService->saveTask($taskData, $parameters));
     }
