@@ -119,4 +119,13 @@ class TaskService
             $this->db->table('tasks')->join('statuses', 'tasks.status_id', '=', 'statuses.id')->select($select)
         )->get();
     }
+
+    public function getStats(array $parameters, Task $task): Collection
+    {
+        $select = ['count(*) as count', 'name as status', 'status_id'];
+        return $this->queryBuilderService->buildQueryFromParameters(
+            $this->queryBuilderService->filterInvalidParameters($parameters, $select, $task),
+            $this->db->table('tasks')->join('statuses', 'tasks.status_id', '=', 'statuses.id')->select($select)->groupBy('status_id')
+        )->get();
+    }
 }
