@@ -9,5 +9,10 @@ class Task extends Model
 {
     use SoftDeletes;
 
-    protected $guarded = [];
+    protected $guarded = ['status_id'];
+
+    public function status()
+    {
+        return $this->belongsTo(Status::class);
+    }
 }
