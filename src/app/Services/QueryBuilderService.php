@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Schema;
 
 class QueryBuilderService
 {
@@ -16,27 +17,32 @@ class QueryBuilderService
         '+' => 'asc',
         '-' => 'desc'
     ];
+    const DEFAULT_DIRECTION = '+';
+    const SORT_PARAM_NAME = 'sort';
 
     /**
      * Dynamically generate query builder from given parameters
      *
-     * @param array $parameters
+     * @param array<string, mixed> $parameters
      * @param Builder $query
+     * @param array<string,string> $aliases
      * @return Builder
      */
-    public function buildQueryFromParameters(array $parameters, Builder $query): Builder
+    public function buildQueryFromParameters(array $parameters, Builder $query, array $aliases = []): Builder
     {
-        if (isset($parameters['sort'])) {
-            $query = $query->orderBy(substr($parameters['sort'], 1), self::SORT_DIRECTION_MAP[substr($parameters['sort'], 0, 1)] ?? self::SORT_DIRECTION_MAP['+']);
+        if (isset($parameters[self::SORT_PARAM_NAME])) {
+            $query = isset(self::SORT_DIRECTION_MAP[$this->getSortDirectionIndicator($parameters[self::SORT_PARAM_NAME])])
+                ? $query->orderBy($this->getSortedColumn($parameters[self::SORT_PARAM_NAME]), self::SORT_DIRECTION_MAP[$this->getSortDirectionIndicator($parameters[self::SORT_PARAM_NAME])])
+                : $query->orderBy($parameters[self::SORT_PARAM_NAME], self::SORT_DIRECTION_MAP[self::DEFAULT_DIRECTION]);
         }
 
-        $parameters = array_filter($parameters, fn(string $key): bool => $key != 'sort', ARRAY_FILTER_USE_KEY);
+        $parameters = array_filter($parameters, fn(string $key): bool => $key != self::SORT_PARAM_NAME, ARRAY_FILTER_USE_KEY);
         if (empty($parameters)) {
             return $query;
         }
 
         foreach ($parameters as $column => $value) {
-            $query = $query->where($column, '=', $value);
+            $query = $query->where($aliases[$column] ?? $column, '=', $value);
         }
 
         return $query;
@@ -45,18 +51,54 @@ class QueryBuilderService
     /**
      * Filters out parameters invalid for query modification
      *
-     * @param array $parameters
-     * @param array $select
-     * @param Model $model
-     * @return array
+     * @param array<string, mixed> $parameters
+     * @param string[] $select
+     * @param string[] $model
+     * @return array<string, mixed>
      */
-    public function filterInvalidParameters(array $parameters, array $select, Model $model): array
+    public function filterInvalidParameters(array $parameters, array $select, array $modelColumns): array
     {
         if (empty($parameters)) {
             return $parameters;
         }
 
-        $permittedFields = array_unique([...$model->attributesToArray(), ...array_map(fn(string $field): string => trim(end(explode('as', $field))), array_filter($select, fn(string $field): bool => !str_contains($field, '*')))]);
-        return array_filter(array_keys($parameters), fn(string $parameter): bool => in_array($parameter, $permittedFields));
+        $permittedFields = array_unique([
+            ...$modelColumns,
+            ...array_map(
+                function (string $field): string {
+                    $field_explode = explode('as', $field);
+                    return trim(array_pop($field_explode));
+                },
+                array_filter($select, fn(string $field): bool => !str_contains($field, '*') || str_contains($field, '(*)'))
+            )
+        ]);
+
+        return array_filter(
+            $parameters,
+            fn($value, string $parameter): bool => in_array($parameter, $permittedFields) || ($parameter == self::SORT_PARAM_NAME && array_intersect([$value, $this->getSortedColumn($value)], $permittedFields)),
+            ARRAY_FILTER_USE_BOTH
+        );
+    }
+
+    /**
+     * Extracts sort indication from sort expression string
+     *
+     * @param string $sortExpression
+     * @return string
+     */
+    public function getSortDirectionIndicator(string $sortExpression): string
+    {
+        return substr($sortExpression, 0, 1);
+    }
+
+    /**
+     * Extracts sort column from sort expression string
+     *
+     * @param string $sortExpression
+     * @return string
+     */
+    public function getSortedColumn(string $sortExpression): string
+    {
+        return substr($sortExpression, 1);
     }
 }

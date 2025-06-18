@@ -6,6 +6,7 @@ use App\Exceptions\ValidationException;
 use App\Models\Status;
 use App\Models\Task;
 use Illuminate\Database\Connection;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -107,25 +108,72 @@ class TaskService
     /**
      * Returns a list of tasks and their statuses
      *
-     * @param array $parameters
+     * @param array<string, mixed> $parameters
      * @param Task $task
      * @return Collection
      */
     public function fetch(array $parameters, Task $task): Collection
     {
         $select = ['tasks.*', 'name as status'];
-        return $this->queryBuilderService->buildQueryFromParameters(
-            $this->queryBuilderService->filterInvalidParameters($parameters, $select, $task),
-            $this->db->table('tasks')->join('statuses', 'tasks.status_id', '=', 'statuses.id')->select($select)
-        )->get();
+        return $this->executeBuiltQuery(
+            $this->getBasicTasksQuery($select),
+            $parameters,
+            $select,
+            $task
+        );
     }
 
+    /**
+     * Calculates number of tasks per status
+     *
+     * @param array<string, mixed> $parameters
+     * @param Task $task
+     * @return Collection
+     */
     public function getStats(array $parameters, Task $task): Collection
     {
-        $select = ['count(*) as count', 'name as status', 'status_id'];
+        $countStatement = 'count(*) as count';
+        $select = ['name as status', 'status_id'];
+        return $this->executeBuiltQuery(
+            $this->getBasicTasksQuery([$this->db->raw($countStatement), ...$select])->groupBy('status_id'),
+            $parameters,
+            [$countStatement, ...$select],
+            $task
+        );
+    }
+
+    /**
+     * Generates basic query - select from tasks table joined with statuses
+     *
+     * @param string[] $select
+     * @return Builder
+     */
+    public function getBasicTasksQuery(array $select): Builder
+    {
+        return $this->db->table('tasks')->join('statuses', 'tasks.status_id', '=', 'statuses.id')->select($select);
+    }
+
+    /**
+     * Builds and executes query
+     *
+     * @param Builder $basicQuery
+     * @param array<string, mixed> $parameters
+     * @param string[] $select
+     * @param Task $task
+     * @return Collection
+     */
+    public function executeBuiltQuery(Builder $basicQuery, array $parameters, array $select, Task $task): Collection
+    {
         return $this->queryBuilderService->buildQueryFromParameters(
-            $this->queryBuilderService->filterInvalidParameters($parameters, $select, $task),
-            $this->db->table('tasks')->join('statuses', 'tasks.status_id', '=', 'statuses.id')->select($select)->groupBy('status_id')
+            $this->queryBuilderService->filterInvalidParameters($parameters, $select, $this->db->getSchemaBuilder()->getColumnListing($task->getTable())),
+            $basicQuery,
+            collect($select)->map(function (string $field) {
+                if (!str_contains($field, ' as ')) {
+                    return [];
+                }
+                $aliasBreakdown = explode(' as ', $field);
+                return [$aliasBreakdown[1] => $aliasBreakdown[0]];
+            })->collapse()->all()
         )->get();
     }
 }
